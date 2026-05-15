@@ -13,7 +13,6 @@ from email.mime.image import MIMEImage
 from html import escape
 from email.utils import formataddr
 from urllib.parse import quote
-import base64
 
 import markdown
 from pygments.formatters import HtmlFormatter
@@ -126,20 +125,21 @@ def _has_cjk_chars(text: str) -> bool:
 
 
 def _get_latex_render_url(latex_content: str, is_block: bool, dpi: int = 300) -> str:
-    """Generate LaTeX rendering URL, choosing service based on content.
+    """Generate LaTeX rendering URL using codecogs with CJK support.
     
-    Uses codecogs for ASCII-only LaTeX, switches to golatex for CJK content.
+    For CJK content, wraps LaTeX in \\usepackage{CJK} environment with GBK font.
+    For ASCII-only, uses standard codecogs format.
     """
     if _has_cjk_chars(latex_content):
-        # golatex.renderlatex.com supports CJK via xelatex backend
-        # Format: https://golatex.renderlatex.com/default/png?latex=<base64>
-        latex_bytes = latex_content.encode('utf-8')
-        latex_b64 = base64.b64encode(latex_bytes).decode('ascii')
-        return f"https://golatex.renderlatex.com/default/png?latex={latex_b64}"
-    else:
-        # codecogs for ASCII LaTeX (better rendering quality for pure math)
+        # Wrap with CJK package for Chinese/Japanese/Korean support
+        # gbsn = GB Song font (for Simplified Chinese)
+        wrapped = f"\\usepackage{{CJK}}\\begin{{CJK}}{{UTF8}}{{gbsn}}{latex_content}\\end{{CJK}}"
         prefix = r"\dpi{300}\bg{white}" if is_block else r"\dpi{300}\bg{white}\inline"
-        return f"https://latex.codecogs.com/png.latex?{prefix}%20{quote(latex_content)}"
+    else:
+        wrapped = latex_content
+        prefix = r"\dpi{300}\bg{white}" if is_block else r"\dpi{300}\bg{white}\inline"
+    
+    return f"https://latex.codecogs.com/png.latex?{prefix}%20{quote(wrapped)}"
 
 
 def _fetch_latex_image(url: str, dpi: int = 300) -> tuple:
