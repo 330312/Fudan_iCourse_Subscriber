@@ -13,6 +13,7 @@ from email.mime.image import MIMEImage
 from html import escape
 from email.utils import formataddr
 from urllib.parse import quote
+import base64
 
 import markdown
 from pygments.formatters import HtmlFormatter
@@ -110,6 +111,35 @@ li { margin-bottom: 4px; }
 _MIN_INLINE_HEIGHT = 13  # minimum logical height for inline formulas (px)
 
 _IMAGE_CACHE: dict[str, tuple] = {}
+
+
+def _has_cjk_chars(text: str) -> bool:
+    """Check if text contains CJK (Chinese, Japanese, Korean) characters."""
+    # Unicode ranges for CJK Unified Ideographs, Hiragana, Katakana, Hangul, etc.
+    cjk_pattern = re.compile(
+        r'[\u4E00-\u9FFF]|'  # CJK Unified Ideographs
+        r'[\u3040-\u309F]|'  # Hiragana
+        r'[\u30A0-\u30FF]|'  # Katakana
+        r'[\uAC00-\uD7AF]'   # Hangul
+    )
+    return bool(cjk_pattern.search(text))
+
+
+def _get_latex_render_url(latex_content: str, is_block: bool, dpi: int = 300) -> str:
+    """Generate LaTeX rendering URL, choosing service based on content.
+    
+    Uses codecogs for ASCII-only LaTeX, switches to golatex for CJK content.
+    """
+    if _has_cjk_chars(latex_content):
+        # golatex.renderlatex.com supports CJK via xelatex backend
+        # Format: https://golatex.renderlatex.com/default/png?latex=<base64>
+        latex_bytes = latex_content.encode('utf-8')
+        latex_b64 = base64.b64encode(latex_bytes).decode('ascii')
+        return f"https://golatex.renderlatex.com/default/png?latex={latex_b64}"
+    else:
+        # codecogs for ASCII LaTeX (better rendering quality for pure math)
+        prefix = r"\dpi{300}\bg{white}" if is_block else r"\dpi{300}\bg{white}\inline"
+        return f"https://latex.codecogs.com/png.latex?{prefix}%20{quote(latex_content)}"
 
 
 def _fetch_latex_image(url: str, dpi: int = 300) -> tuple:
@@ -214,8 +244,7 @@ def _md_to_html(md_text: str, cid_images: dict | None = None) -> str:
     for key, original in latex_map.items():
         is_block = original.startswith("$$")
         latex_content = original[2:-2] if is_block else original[1:-1]
-        prefix = r"\dpi{300}\bg{white}" if is_block else r"\dpi{300}\bg{white}\inline"
-        url = f"https://latex.codecogs.com/png.latex?{prefix}%20{quote(latex_content)}"
+        url = _get_latex_render_url(latex_content, is_block)
         latex_info[key] = (url, latex_content, is_block)
 
     _prefetch_latex_images([info[0] for info in latex_info.values()])
