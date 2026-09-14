@@ -242,19 +242,39 @@ class ICourseClient:
 
         return data.get("data", {})
 
-    def get_video_url(self, course_id: str, sub_id: str) -> str | None:
+    def get_video_url(self, course_id: str, sub_id: str, max_retries: int = 3) -> str | None:
         """Get a signed MP4 video URL for a specific lecture.
 
         Uses the get-sub-info API to get the base video URL, then
         signs it with CDN authentication parameters (clientUUID, t).
 
         Returns the signed video URL string if found, None otherwise.
+        
+        Args:
+            course_id: The course ID
+            sub_id: The lecture ID
+            max_retries: Number of retry attempts for API calls (default: 3)
         """
-        try:
-            info = self.get_sub_info(course_id, sub_id)
-        except Exception as e:
-            print(f"    Failed to get sub info for {sub_id}: {type(e).__name__}")
-            return None
+        last_error = None
+        
+        # Retry loop for API resilience
+        for attempt in range(1, max_retries + 1):
+            try:
+                info = self.get_sub_info(course_id, sub_id)
+                break  # Success, exit retry loop
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                print(f"    [Attempt {attempt}/{max_retries}] Failed to get sub info for {sub_id}: {type(e).__name__}: {error_msg}")
+                if attempt < max_retries:
+                    # Wait before retrying (exponential backoff)
+                    wait_time = 2 ** (attempt - 1)
+                    print(f"    [Retry] Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+                else:
+                    # All retries exhausted
+                    print(f"    [Failed] All {max_retries} attempts failed for sub {sub_id}")
+                    return None
 
         # Get server timestamp for signing
         now = info.get("now")
@@ -293,11 +313,11 @@ class ICourseClient:
                 playback = content.get("playback", {})
                 if playback and playback.get("url"):
                     base_url = playback["url"]
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"    [Sub-detail fallback] Error: {type(e).__name__}: {str(e)}")
 
         if not base_url:
-            print(f"    No video URL found for {sub_id} (tried video_list, playurl, sub_detail)")
+            print(f"    [NoURL] No video URL found for {sub_id} (tried video_list, playurl, sub_detail)")
             return None
 
         return self.sign_video_url(base_url, now=now)
