@@ -22,12 +22,11 @@ USER_AGENT = (
 # LLM (ModelScope OpenAI-compatible API)
 DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
 LLM_BASE_URL = "https://api-inference.modelscope.cn/v1/"
+# Keep models with a confirmed working provider on ModelScope's inference API.
+# Qwen3.5-397B-A17B completed a real summarization request in the workflow;
+# other configured IDs previously returned "has no provider supported".
 LLM_MODELS = [
-    "ZhipuAI/GLM-5",
-    "deepseek-ai/DeepSeek-V3.2",
-    "MiniMax/MiniMax-M2.5",
     "Qwen/Qwen3.5-397B-A17B",
-    "ZhipuAI/GLM-4.7"
 ]
 
 # Gemini fallback (for content policy bypass)
